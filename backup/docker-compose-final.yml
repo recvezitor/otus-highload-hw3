@@ -1,0 +1,156 @@
+version: "3.9"
+services:
+  pg-1:
+    container_name: postgres_1
+    hostname: postgres-master
+    image: docker.io/bitnami/postgresql-repmgr:15
+    ports:
+      - "6432:5432"
+    volumes:
+      - pg_1_data:/bitnami/postgresql
+      - ./init-bitnami:/docker-entrypoint-initdb.d
+    environment:
+      - POSTGRESQL_POSTGRES_PASSWORD=adminotuspassword
+      - POSTGRESQL_USERNAME=otususer
+      - POSTGRESQL_PASSWORD=otuspassword
+      - POSTGRESQL_DATABASE=otusdb
+      - REPMGR_PASSWORD=repmgrpassword
+      - REPMGR_PRIMARY_HOST=pg-1
+      - REPMGR_PRIMARY_PORT=5432
+      - REPMGR_PARTNER_NODES=pg-1,pg-2:5432
+      - REPMGR_NODE_NAME=pg-1
+      - REPMGR_NODE_NETWORK_NAME=pg-1
+      - REPMGR_PORT_NUMBER=5432
+      - REPMGR_CONNECT_TIMEOUT=1
+      - REPMGR_RECONNECT_ATTEMPTS=2
+      - REPMGR_RECONNECT_INTERVAL=1
+      - REPMGR_MASTER_RESPONSE_TIMEOUT=5
+    restart: unless-stopped
+    networks:
+      - postgres-repl
+
+  pg-2:
+    container_name: postgres_2
+    image: docker.io/bitnami/postgresql-repmgr:15
+    hostname: postgres-slave
+    ports:
+      - "6433:5432"
+    volumes:
+      - pg_2_data:/bitnami/postgresql
+      - ./create_extensions.sql:/docker-entrypoint-initdb.d/create_extensions.sql:ro
+    environment:
+      - POSTGRESQL_POSTGRES_PASSWORD=adminotuspassword
+      - POSTGRESQL_USERNAME=otususer
+      - POSTGRESQL_PASSWORD=otuspassword
+      - POSTGRESQL_DATABASE=otusdb
+      - REPMGR_PASSWORD=repmgrpassword
+      - REPMGR_PRIMARY_HOST=pg-1
+      - REPMGR_PRIMARY_PORT=5432
+      - REPMGR_PARTNER_NODES=pg-1,pg-2:5432
+      - REPMGR_NODE_NAME=pg-2
+      - REPMGR_NODE_NETWORK_NAME=pg-2
+      - REPMGR_PORT_NUMBER=5432
+      - REPMGR_CONNECT_TIMEOUT=1
+      - REPMGR_RECONNECT_ATTEMPTS=2
+      - REPMGR_RECONNECT_INTERVAL=1
+      - REPMGR_MASTER_RESPONSE_TIMEOUT=5
+    restart: unless-stopped
+    networks:
+      - postgres-repl
+
+#  pgbouncer:
+#    image: edoburu/pgbouncer:1.22.0-p0
+#    container_name: pgbouncer
+#    hostname: pgbouncer
+#    environment:
+#      DB_USER: otususer
+#      DB_PASSWORD: otuspassword
+#      DB_HOST: postgres
+#      DB_NAME: otusdb
+#      POOL_MODE: transaction
+#      ADMIN_USERS: otususer
+#      AUTH_TYPE: "scram-sha-256"
+#      MAX_CLIENT_CONN: 10000
+#      DEFAULT_POOL_SIZE: 100
+#      IGNORE_STARTUP_PARAMETERS: "extra_float_digits"
+#    ports:
+#      - "6432:5432"
+#    restart: unless-stopped
+#    networks:
+#      - otus-network
+#    depends_on:
+#      - pg-1
+#      - pg-2
+
+  postgres_exporter:
+    container_name: exporter
+    hostname: exporter
+    image: prometheuscommunity/postgres-exporter:v0.10.1
+    environment:
+      DATA_SOURCE_URI: "postgres:5432/otusdb?sslmode=disable"
+      DATA_SOURCE_USER: "otususer"
+      DATA_SOURCE_PASS: "otuspassword"
+      PG_EXPORTER_EXTEND_QUERY_PATH: "/etc/postgres_exporter/queries.yaml"
+    volumes:
+      - ./pgexporter/queries.yaml:/etc/postgres_exporter/queries.yaml:ro
+    ports:
+      - 9187:9187
+    restart: unless-stopped
+    deploy:
+      resources:
+        limits:
+          cpus: '0.2'
+          memory: 500M
+    networks:
+      - otus-network
+    depends_on:
+      - postgres
+
+  prometheus:
+    image: prom/prometheus:v2.51.1
+    container_name: prometheus
+    hostname: prometheus
+    volumes:
+      - prometheus-data:/etc/prometheus/
+      - ./prometheus/prometheus.yml:/etc/prometheus/prometheus.yml:ro
+    command:
+      - --config.file=/etc/prometheus/prometheus.yml
+    ports:
+      - 9090:9090
+    restart: unless-stopped
+    environment:
+      TZ: "Europe/Moscow"
+    networks:
+      - otus-network
+    depends_on:
+      - postgres_exporter
+
+  grafana:
+    image: grafana/grafana:10.1.9
+    container_name: grafana
+    hostname: grafana
+    ports:
+      - 3000:3000
+    volumes:
+      - grafana-data:/var/lib/grafana
+      - ./grafana-provisioning:/etc/grafana/provisioning/
+    restart: unless-stopped
+    environment:
+      GF_SECURITY_ADMIN_PASSWORD: "password"
+      TZ: "Europe/Moscow"
+    depends_on:
+      - prometheus
+    networks:
+      - otus-network
+
+
+volumes:
+  pg_1_data:
+  pg_2_data:
+  grafana-data:
+  prometheus-data:
+  otusdb-data:
+
+networks:
+  otus-network:
+    driver: bridge

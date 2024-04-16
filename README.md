@@ -3,34 +3,17 @@
 
 ### Инструкция
 
-Запустить файл docker-compose.yml
-
-docker compose up
-
-Автоматически запустит мастера и реплику
-
-Альтернативно можно определить параметры мастера через postgres.conf, но не забыть прописать расположение файла через команду -c
-
+* Вместо `Patroni` используется `repmgr` от EnterpriseDB
+* Запустить docker compose файл `docker compose -f docker/docker-compose.yml up`
+* потушить мастер командой `docker stop postgres_1`
+* В логах обнаружить:
 ```
-    services:
-        postgresql-master:
-        image: postgres:14
-        shm_size: 1g
-        ports:
-        - "5432:5432"
-        environment:
-            POSTGRES_USERNAME: postgres
-            POSTGRES_DATABASE: postgres
-            POSTGRES_PASSWORD: postgres
-        volumes:
-          - ./pg_master/01_init.sql:/docker-entrypoint-initdb.d/init.sql
-          - ./pg_master/02_schema.sql:/docker-entrypoint-initdb.d/schema.sql
-          - ./pg_master/postgres.conf:/etc/postgresql/postgresql.conf
-        command: postgres -c config_file=/etc/postgresql/postgresql.conf
+postgres_2     | NOTICE: STANDBY PROMOTE successful
+postgres_2     | DETAIL: server "pg-2" (ID: 1002) was successfully promoted to primary
 ```
-
-
-Для проверки вставить данные в мастер и проверить на реплике
-
-insert into otus_highload.person (id, first_name, second_name, birthdate, biography, city, created_at, updated_at)
-values ('370c779a-3570-49e4-b066-34f1c06f494d', 'name1', 'secondName1', '2010-01-01', 'text text', 'Vladivostok', now(), null); 
+* Восстановить старый 'мастер' комнадой `docker start postgres_1`:
+```
+postgres_1     | LOG:  database system is ready to accept read-only connections
+```
+* При настройке ДатаСорса DB_URL указать `jdbc:postgresql://localhost:32769,localhost:32770/test_db?connectTimeout=1&hostRecheckSeconds=2&socketTimeout=600&targetServerType=primary`
+* При настройке дополнительного ДатаСорса, который читает только с реплики указать `targetServerType=secondary`
