@@ -5,7 +5,7 @@
 
 * Вместо `Patroni` используется `repmgr` от EnterpriseDB
 * Запустить docker compose файл `docker compose -f docker/docker-compose.yml up`
-* потушить мастер командой `docker stop postgres_1`
+* отушить мастер командой `docker stop postgres_1`
 * В логах обнаружить:
 ```
 postgres_2     | NOTICE: STANDBY PROMOTE successful
